@@ -1,0 +1,172 @@
+---
+title: "Cafe Data"
+author: "Caresse Cross Beard"
+format: html
+editor: visual
+---
+
+## Cafe Data
+
+This vignette demonstrates how to use Tidyverse packages to clean and explore cafe sales data. The dataset contains 10,000 synthetic sales transactions with missing values, inconsistent entries, and other data quality issues. Using the dplyr and tidyr packages, I will demonstrate how to identify missing values, filter observations, modify variables, and summarize sales information. I will also use ggplot2 to create visualizations that help identify patterns in cafe sales.
+
+- List
+  - using na_if()
+  - across()
+  - ggplot()
+  - format()
+  - sum()
+  - arrange()
+  - sum()
+  - mutate()
+  - group_by()
+  - filter()
+
+```{r load packages}
+library(tidyverse)
+library(dplyr)
+
+```
+
+```{r load data}
+cafe_dirty <- read.csv("dirty_cafe_sales.csv")
+
+glimpse(cafe_dirty)
+```
+
+```{r find missing variables}
+cafe_dirty %>%
+  summarise(
+    across(
+      where(is.character),
+      ~ sum(is.na(.) | . == "" |
+              . == "ERROR" | . == "UNKNOWN")
+    )
+  )
+```
+
+To find missing variables, I reviewed the dataset and found "ERROR", "UNKNOWN" and blank cells. I will replace these to read as NA.
+
+```{r replace values to NA}
+cafe_dirty <- cafe_dirty %>%
+  mutate(
+    across(
+      where(is.character),
+      ~ na_if(., "")
+    )
+  ) %>%
+  mutate(
+    across(
+      where(is.character),
+      ~ na_if(., "ERROR")
+    )
+  ) %>%
+  mutate(
+    across(
+      where(is.character),
+      ~ na_if(., "UNKNOWN")
+    )
+  )
+```
+
+Let's analyze the total sales and number of transactions by item.
+
+```{r change columns to numeric}
+cafe_dirty <- cafe_dirty %>%
+  mutate(
+    across(
+      c(Quantity, Price.Per.Unit, Total.Spent),
+      as.numeric
+    )
+  )
+```
+
+```{r summarize coffee sales}
+cafe_dirty %>%
+  group_by(Item) %>%
+  summarise(
+    avg_sales = mean(Total.Spent, na.rm = TRUE),
+    total_sales = sum(Total.Spent, na.rm = TRUE),
+    total_transactions = n()
+  ) %>%
+  arrange(desc(total_sales)
+  )
+```
+
+We see that the highest revenue sale is for salad. However, juice had more transactions.
+
+## Total Sales Chart
+
+```{r sales by item table}
+sales_by_item <- cafe_dirty %>%
+  filter(
+    !is.na(Item),
+  ) %>%
+  group_by(Item) %>%
+  summarise(
+    total_sales = sum(Total.Spent, na.rm = TRUE)
+  ) %>%
+  arrange(desc(total_sales))
+```
+
+```{r plot}
+ggplot(sales_by_item,
+       aes(x = reorder(Item, total_sales),
+           y = total_sales, fill = Item)) +
+  geom_col() +
+  coord_flip() +
+  labs(
+    title = "Total Sales by Cafe Item",
+    x = "Cafe Item",
+    y = "Total Sales ($)"
+  ) +
+  theme(legend.position = "none")
+```
+
+## Transaction Dates
+
+Now I will compare the daily sales.
+
+```{r check date data type}
+class(cafe_dirty$Transaction.Date)
+```
+
+```{r convert date}
+cafe_dirty <- cafe_dirty %>%
+  mutate(
+    Transaction.Date = as.Date(Transaction.Date)
+  )
+```
+
+```{r create monthly sales by item}
+monthly_items <- cafe_dirty %>%
+  filter(
+    !is.na(Transaction.Date),
+    !is.na(Item)
+  ) %>%
+  mutate(
+    month = format(Transaction.Date, "%b")
+  ) %>%
+  group_by(month, Item) %>%
+  summarise(
+    total_items = sum(Quantity, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  arrange(month)
+```
+
+```{r Monthly item sales}
+ggplot(monthly_items,
+       aes(x = month,
+           y = total_items,
+           color = Item,
+           group = Item)) +
+  geom_line(linewidth = .7) +
+  geom_point(size = 2) +
+  labs(
+    title = "Monthly Cafe Item Purchases",
+    x = "Month (2023)",
+    y = "No. of Items Purchased",
+    color = "Cafe Item"
+  ) +
+  theme_minimal()
+```
